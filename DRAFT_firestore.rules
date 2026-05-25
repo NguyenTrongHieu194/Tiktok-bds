@@ -1,0 +1,383 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // --- Global Safety Net ---
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- Global Syntactic and ABAC Helpers ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    // Auth tokens never contain trusted custom claims. Lookup role in users collection.
+    function getUser(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)).data;
+    }
+
+    function hasRole(reqRole) {
+      return isSignedIn() && getUser(request.auth.uid).role == reqRole;
+    }
+
+    function isAdmin() {
+      return hasRole('admin');
+    }
+
+    function isAgent() {
+      return hasRole('agent');
+    }
+
+    function isOwner(ownerId) {
+      return isSignedIn() && request.auth.uid == ownerId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    // Context-Aware Incoming Data Payload Shortcuts
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- 1. USERS COLLECTION RULES ---
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() 
+                    && isOwner(userId)
+                    && isValidUser(incoming())
+                    && incoming().role == 'customer'; // Self-registered default role is customer
+      allow update: if isSignedIn() 
+                    && isOwner(userId)
+                    && isValidUser(incoming())
+                    && incoming().createdAt == existing().createdAt // createdAt is immutable
+                    && (
+                      // Action: Update Customer Profile
+                      (hasRole('customer') && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'bio', 'phoneNumber', 'updatedAt'])) ||
+                      // Action: Update Agent Specific Profile (Agent cannot self-verify)
+                      (hasRole('agent') && incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'avatarUrl', 'bio', 'phoneNumber', 'agencyName', 'updatedAt']))
+                    )
+                    || isAdmin(); // Admin can override or change verify status
+
+      allow delete: if isAdmin();
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['userId', 'displayName', 'email', 'role', 'createdAt', 'updatedAt'])
+        && data.userId == request.auth.uid
+        && data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 80
+        && data.email is string && data.email.size() >= 5 && data.email.size() <= 120
+        && data.role in ['customer', 'agent', 'admin']
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    // --- 2. PROPERTIES COLLECTION RULES ---
+    match /properties/{propertyId} {
+      allow read: if isSignedIn();
+      allow create: if isEmailVerified() 
+                    && isAgent()
+                    && isValidId(propertyId)
+                    && isValidProperty(incoming())
+                    && incoming().agentId == request.auth.uid;
+      allow update: if isEmailVerified() && (
+                      (isOwner(existing().agentId) 
+                        && isValidProperty(incoming())
+                        && incoming().agentId == existing().agentId
+                        && incoming().createdAt == existing().createdAt
+                        && (
+                          // Action: Edit Listing Full Details
+                          (!isTerminalPropertyStatus(existing().status) && incoming().diff(existing()).affectedKeys().hasOnly([
+                            'title', 'description', 'price', 'transactionType', 'propertyType', 'location', 'bedrooms', 'bathrooms', 'areaSqM', 'images', 'status', 'updatedAt'
+                          ])) ||
+                          // Action: Toggle Only Status for Terminal Listings (sold/rented)
+                          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+                        )
+                      ) || isAdmin()
+                    );
+      allow delete: if isAdmin() || (isEmailVerified() && isOwner(existing().agentId));
+    }
+
+    function isTerminalPropertyStatus(status) {
+      return status in ['sold', 'rented', 'archived'];
+    }
+
+    function isValidProperty(data) {
+      return data.keys().hasAll(['propertyId', 'agentId', 'title', 'price', 'transactionType', 'propertyType', 'location', 'status', 'createdAt', 'updatedAt'])
+        && data.propertyId is string && data.propertyId.size() <= 128
+        && data.title is string && data.title.size() >= 10 && data.title.size() <= 150
+        && data.price is number && data.price >= 0
+        && data.transactionType in ['sale', 'rent']
+        && data.propertyType in ['apartment', 'house', 'land', 'villa', 'office']
+        && data.status in ['pending', 'active', 'sold', 'rented', 'archived']
+        && data.location is map
+        && data.createdAt == (resource == null ? request.time : existing().createdAt)
+        && data.updatedAt == request.time;
+    }
+
+    // --- 3. VIDEOS COLLECTION RULES ---
+    match /videos/{videoId} {
+      allow read: if isSignedIn();
+      allow create: if isEmailVerified()
+                    && isAgent()
+                    && isValidId(videoId)
+                    && isValidVideo(incoming())
+                    && incoming().agentId == request.auth.uid;
+      allow update: if isEmailVerified() && (
+                      (isOwner(existing().agentId)
+                        && isValidVideo(incoming())
+                        && incoming().agentId == existing().agentId
+                        && incoming().createdAt == existing().createdAt
+                        && incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'thumbnailUrl', 'updatedAt'])
+                      ) || isAdmin()
+                    );
+      allow delete: if isAdmin() || (isEmailVerified() && isOwner(existing().agentId));
+    }
+
+    function isValidVideo(data) {
+      return data.keys().hasAll(['videoId', 'agentId', 'videoUrl', 'status', 'createdAt', 'updatedAt'])
+        && data.videoId is string && data.videoId.size() <= 128
+        && data.videoUrl is string && data.videoUrl.size() < 1024
+        && data.status in ['active', 'flagged', 'removed']
+        && data.createdAt == (resource == null ? request.time : existing().createdAt)
+        && data.updatedAt == request.time;
+    }
+
+    // --- 4. COMMENTS COLLECTION RULES ---
+    match /comments/{commentId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && isValidId(commentId)
+                    && isValidComment(incoming())
+                    && incoming().userId == request.auth.uid;
+      allow update: if isSignedIn() 
+                    && isOwner(existing().userId)
+                    && isValidComment(incoming())
+                    && incoming().userId == existing().userId
+                    && incoming().createdAt == existing().createdAt
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['text', 'updatedAt']);
+      allow delete: if isAdmin() || (isSignedIn() && isOwner(existing().userId));
+    }
+
+    function isValidComment(data) {
+      return data.keys().hasAll(['commentId', 'videoId', 'userId', 'text', 'createdAt', 'updatedAt'])
+        && data.commentId is string && data.commentId.size() <= 128
+        && data.videoId is string && data.videoId.size() <= 128
+        && data.text is string && data.text.size() > 0 && data.text.size() <= 500
+        && data.createdAt == (resource == null ? request.time : existing().createdAt)
+        && data.updatedAt == request.time;
+    }
+
+    // --- 5. FOLLOWERS COLLECTION RULES ---
+    match /followers/{followerId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && isValidId(followerId)
+                    && isValidFollower(incoming())
+                    && incoming().followerUid == request.auth.uid;
+      allow delete: if isSignedIn() && isOwner(existing().followerUid);
+    }
+
+    function isValidFollower(data) {
+      return data.keys().hasAll(['followerId', 'followerUid', 'followedUid', 'createdAt'])
+        && data.followerId == data.followerUid + '_' + data.followedUid
+        && data.followerUid == request.auth.uid
+        && data.followedUid is string && data.followedUid.size() <= 128
+        && data.createdAt == request.time;
+    }
+
+    // --- 6. LIKES COLLECTION RULES ---
+    match /likes/{likeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn()
+                    && isValidId(likeId)
+                    && isValidLike(incoming())
+                    && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && isOwner(existing().userId);
+    }
+
+    function isValidLike(data) {
+      return data.keys().hasAll(['likeId', 'userId', 'targetId', 'targetType', 'createdAt'])
+        && data.likeId == data.userId + '_' + data.targetId
+        && data.userId == request.auth.uid
+        && data.targetId is string && data.targetId.size() <= 128
+        && data.targetType in ['video', 'property']
+        && data.createdAt == request.time;
+    }
+
+    // --- 7. MESSAGES COLLECTION RULES ---
+    match /messages/{messageId} {
+      // Direct access allowed only to the sender or receiver
+      allow read: if isSignedIn() && (isOwner(existing().senderId) || isOwner(existing().receiverId));
+      allow create: if isSignedIn()
+                    && isValidId(messageId)
+                    && isValidMessage(incoming())
+                    && incoming().senderId == request.auth.uid;
+      // Message body text itself is immutable for integrity; only allow updating 'isRead' by receiver (Read Receipt)
+      allow update: if isSignedIn() 
+                    && isOwner(existing().receiverId)
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['isRead', 'updatedAt'])
+                    && incoming().isRead == true
+                    && incoming().updatedAt == request.time;
+      allow delete: if isAdmin();
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['messageId', 'chatRoomId', 'senderId', 'receiverId', 'text', 'isRead', 'createdAt', 'updatedAt'])
+        && data.messageId is string && data.messageId.size() <= 128
+        && data.chatRoomId is string && data.chatRoomId.size() <= 200
+        && data.text is string && data.text.size() <= 2000
+        && data.isRead == false
+        && data.createdAt == request.time
+        && data.updatedAt == request.time;
+    }
+
+    // --- 8. LEADS COLLECTION RULES ---
+    match /leads/{leadId} {
+      // A lead can be read by the generating Customer, the assigned Agent, or Admin
+      allow read: if isSignedIn() && (isOwner(existing().customerId) || isOwner(existing().agentId) || isAdmin());
+      allow create: if isSignedIn()
+                    && isValidId(leadId)
+                    && isValidLead(incoming())
+                    && (incoming().customerId == request.auth.uid || incoming().customerId == null);
+      allow update: if isSignedIn() && (
+                      // Customer can cancel or update text details of lead
+                      (isOwner(existing().customerId)
+                        && isValidLead(incoming())
+                        && incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'email', 'message', 'updatedAt'])
+                      ) ||
+                      // Agent can change state metrics (sales status transitions)
+                      (isOwner(existing().agentId)
+                        && isValidLead(incoming())
+                        && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'aiSummary', 'updatedAt'])
+                      ) || isAdmin()
+                    );
+      allow delete: if isAdmin();
+    }
+
+    function isValidLead(data) {
+      return data.keys().hasAll(['leadId', 'propertyId', 'agentId', 'status', 'createdAt', 'updatedAt'])
+        && data.leadId is string && data.leadId.size() <= 128
+        && data.propertyId is string && data.propertyId.size() <= 128
+        && data.agentId is string && data.agentId.size() <= 128
+        && data.status in ['new', 'contacted', 'qualified', 'lost', 'won']
+        && data.createdAt == (resource == null ? request.time : existing().createdAt)
+        && data.updatedAt == request.time;
+    }
+
+    // --- 9. APPOINTMENTS COLLECTION RULES ---
+    match /appointments/{appointmentId} {
+      allow read: if isSignedIn() && (isOwner(existing().customerId) || isOwner(existing().agentId) || isAdmin());
+      allow create: if isSignedIn()
+                    && isValidId(appointmentId)
+                    && isValidAppointment(incoming())
+                    && incoming().customerId == request.auth.uid;
+      allow update: if isSignedIn() && (
+                      (isOwner(existing().customerId)
+                        && isValidAppointment(incoming())
+                        && incoming().customerId == existing().customerId
+                        && incoming().agentId == existing().agentId
+                        && incoming().createdAt == existing().createdAt
+                        && (
+                          // Customer action: Cancel booking or change scheduling notes
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'notes', 'updatedAt'])
+                        )
+                      ) ||
+                      (isOwner(existing().agentId)
+                        && isValidAppointment(incoming())
+                        && incoming().customerId == existing().customerId
+                        && incoming().agentId == existing().agentId
+                        && incoming().createdAt == existing().createdAt
+                        && (
+                          // Agent action: Update scheduling bookings states
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'scheduledTime', 'updatedAt'])
+                        )
+                      ) || isAdmin()
+                    );
+      allow delete: if isAdmin();
+    }
+
+    function isValidAppointment(data) {
+      return data.keys().hasAll(['appointmentId', 'propertyId', 'agentId', 'customerId', 'scheduledTime', 'type', 'status', 'createdAt', 'updatedAt'])
+        && data.appointmentId is string && data.appointmentId.size() <= 128
+        && data.propertyId is string && data.propertyId.size() <= 128
+        && data.agentId is string && data.agentId.size() <= 128
+        && data.customerId is string && data.customerId.size() <= 128
+        && data.type in ['online_video', 'in_person']
+        && data.status in ['pending', 'confirmed', 'cancelled', 'completed']
+        && data.createdAt == (resource == null ? request.time : existing().createdAt)
+        && data.updatedAt == request.time;
+    }
+
+    // --- 10. NOTIFICATIONS COLECTION RULES ---
+    match /notifications/{notificationId} {
+      allow read: if isSignedIn() && isOwner(existing().receiverId);
+      allow create: if isSignedIn()
+                    && isValidId(notificationId)
+                    && isValidNotification(incoming());
+      allow update: if isSignedIn()
+                    && isOwner(existing().receiverId)
+                    && incoming().diff(existing()).affectedKeys().hasOnly(['isRead'])
+                    && incoming().isRead == true;
+      allow delete: if isSignedIn() && isOwner(existing().receiverId);
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['notificationId', 'receiverId', 'type', 'title', 'body', 'isRead', 'createdAt'])
+        && data.notificationId is string && data.notificationId.size() <= 128
+        && data.receiverId is string && data.receiverId.size() <= 128
+        && data.type in ['like', 'comment', 'follow', 'booking_change', 'new_message', 'lead_alert']
+        && data.title is string && data.title.size() <= 100
+        && data.body is string && data.body.size() <= 400
+        && data.isRead is bool
+        && data.createdAt == request.time;
+    }
+
+    // --- 11. SAVED PROPERTIES RULES ---
+    match /savedProperties/{savedId} {
+      allow read: if isSignedIn() && isOwner(existing().userId);
+      allow create: if isSignedIn()
+                    && isValidId(savedId)
+                    && isValidSavedProperty(incoming())
+                    && incoming().userId == request.auth.uid;
+      allow delete: if isSignedIn() && isOwner(existing().userId);
+    }
+
+    function isValidSavedProperty(data) {
+      return data.keys().hasAll(['savedId', 'userId', 'propertyId', 'createdAt'])
+        && data.savedId == data.userId + '_' + data.propertyId
+        && data.userId == request.auth.uid
+        && data.propertyId is string && data.propertyId.size() <= 128
+        && data.createdAt == request.time;
+    }
+
+    // --- 12. VIEW HISTORY RULES ---
+    match /viewHistory/{historyId} {
+      allow read: if isSignedIn() && isOwner(existing().userId);
+      allow create: if isSignedIn()
+                    && isValidId(historyId)
+                    && isValidHistory(incoming())
+                    && incoming().userId == request.auth.uid;
+      allow delete: if isAdmin() || (isSignedIn() && isOwner(existing().userId));
+    }
+
+    function isValidHistory(data) {
+      return data.keys().hasAll(['historyId', 'userId', 'targetId', 'targetType', 'createdAt'])
+        && data.historyId is string && data.historyId.size() <= 128
+        && data.userId == request.auth.uid
+        && data.targetId is string && data.targetId.size() <= 128
+        && data.targetType in ['video', 'property']
+        && data.createdAt == request.time;
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "AI BDS Platform",
+  "description": "Nền tảng mạng xã hội video ngắn kết hợp website bất động sản và tư vấn AI tìm nhà.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

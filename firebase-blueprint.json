@@ -1,0 +1,265 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with roles of Customer, Agent, or Admin",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Unique Firebase Auth UID" },
+        "displayName": { "type": "string", "description": "User public display name" },
+        "email": { "type": "string", "description": "User email address" },
+        "avatarUrl": { "type": "string", "description": "User profile picture URL" },
+        "role": { "type": "string", "enum": ["customer", "agent", "admin"], "description": "User authority role" },
+        "phoneNumber": { "type": "string", "description": "Contact phone number" },
+        "bio": { "type": "string", "description": "User biography or agency details" },
+        "isVerifiedAgent": { "type": "boolean", "description": "True if agent is verified by admin" },
+        "agencyName": { "type": "string", "description": "Optional name of real estate agency" },
+        "followersCount": { "type": "number", "description": "Total followers count" },
+        "followingCount": { "type": "number", "description": "Total following count" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["userId", "displayName", "email", "role", "createdAt", "updatedAt"]
+    },
+    "Property": {
+      "title": "Property",
+      "description": "Real estate property listing",
+      "type": "object",
+      "properties": {
+        "propertyId": { "type": "string", "description": "Unique property document ID" },
+        "agentId": { "type": "string", "description": "Reference to the users/ ID who owns this listing" },
+        "title": { "type": "string", "description": "Title of the property listing" },
+        "description": { "type": "string", "description": "Detailed markdown description of the property" },
+        "price": { "type": "number", "description": "Price of the property in local currency" },
+        "transactionType": { "type": "string", "enum": ["sale", "rent"], "description": "Rent or Sale" },
+        "propertyType": { "type": "string", "enum": ["apartment", "house", "land", "villa", "office"], "description": "Type of property" },
+        "location": { "type": "object", "description": "Geo data and address details" },
+        "bedrooms": { "type": "number", "description": "Number of bedrooms" },
+        "bathrooms": { "type": "number", "description": "Number of bathrooms" },
+        "areaSqM": { "type": "number", "description": "Constructed area in square meters" },
+        "images": { "type": "array", "description": "Array of storage URLs of property photos" },
+        "status": { "type": "string", "enum": ["pending", "active", "sold", "rented", "archived"], "description": "Listing validation status" },
+        "viewCount": { "type": "number", "description": "Total view count" },
+        "likeCount": { "type": "number", "description": "Total likes count" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["propertyId", "agentId", "title", "price", "transactionType", "propertyType", "location", "status", "createdAt", "updatedAt"]
+    },
+    "Video": {
+      "title": "Video",
+      "description": "Short social media video for a property (TikTok-style)",
+      "type": "object",
+      "properties": {
+        "videoId": { "type": "string", "description": "Unique video ID" },
+        "propertyId": { "type": "string", "description": "Optional reference to the associated properties/ ID" },
+        "agentId": { "type": "string", "description": "Reference to the users/ ID who uploaded the video" },
+        "videoUrl": { "type": "string", "description": "Cloudflare R2 or Storage URL of the MP4 video" },
+        "thumbnailUrl": { "type": "string", "description": "Storage URL of video thumbnail image" },
+        "caption": { "type": "string", "description": "Caption with hashtags" },
+        "likesCount": { "type": "number", "description": "Cached likes count" },
+        "commentsCount": { "type": "number", "description": "Cached comments count" },
+        "sharesCount": { "type": "number", "description": "Total shares count" },
+        "viewCount": { "type": "number", "description": "Total play/view count" },
+        "aiTranscript": { "type": "string", "description": "AI transcribed voice-over text" },
+        "aiTags": { "type": "array", "description": "AI extracted keywords/tags" },
+        "status": { "type": "string", "enum": ["active", "flagged", "removed"], "description": "Moderation status" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["videoId", "agentId", "videoUrl", "status", "createdAt", "updatedAt"]
+    },
+    "Comment": {
+      "title": "Comment",
+      "description": "User comment left on a video",
+      "type": "object",
+      "properties": {
+        "commentId": { "type": "string", "description": "Unique comment ID" },
+        "videoId": { "type": "string", "description": "Reference to the videos/ ID" },
+        "userId": { "type": "string", "description": "Reference to users/ ID of author" },
+        "userName": { "type": "string", "description": "Denormalized user name for fast reads" },
+        "userAvatar": { "type": "string", "description": "Denormalized user avatar for fast reads" },
+        "text": { "type": "string", "description": "Body comment text string" },
+        "likesCount": { "type": "number", "description": "Comment likes count" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["commentId", "videoId", "userId", "text", "createdAt", "updatedAt"]
+    },
+    "Follower": {
+      "title": "Follower",
+      "description": "User relationship entity modeling followers and following networks",
+      "type": "object",
+      "properties": {
+        "followerId": { "type": "string", "description": "Unique composite key 'followerUid_followedUid'" },
+        "followerUid": { "type": "string", "description": "Who is doing the following" },
+        "followedUid": { "type": "string", "description": "Who is being followed" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["followerId", "followerUid", "followedUid", "createdAt"]
+    },
+    "Like": {
+      "title": "Like",
+      "description": "Indicates a user liked a video or property listing",
+      "type": "object",
+      "properties": {
+        "likeId": { "type": "string", "description": "Composite key 'userId_targetId'" },
+        "userId": { "type": "string", "description": "Who liked the content" },
+        "targetId": { "type": "string", "description": "The videoId or propertyId liked" },
+        "targetType": { "type": "string", "enum": ["video", "property"], "description": "Type of target" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["likeId", "userId", "targetId", "targetType", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "Instant message sent between users in chat channels",
+      "type": "object",
+      "properties": {
+        "messageId": { "type": "string", "description": "Unique message ID" },
+        "chatRoomId": { "type": "string", "description": "Composite path represent individual chat session" },
+        "senderId": { "type": "string", "description": "Sender UID" },
+        "receiverId": { "type": "string", "description": "Receiver UID" },
+        "text": { "type": "string", "description": "Body message text string" },
+        "mediaUrl": { "type": "string", "description": "Optional attached item URL" },
+        "mediaType": { "type": "string", "enum": ["image", "video", "property_card"], "description": "Optional media attachment type" },
+        "isRead": { "type": "boolean", "description": "Read receipts indicator" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["messageId", "chatRoomId", "senderId", "receiverId", "text", "isRead", "createdAt", "updatedAt"]
+    },
+    "Lead": {
+      "title": "Lead",
+      "description": "Customer lead submission generated for a property of agent interest",
+      "type": "object",
+      "properties": {
+        "leadId": { "type": "string", "description": "Unique lead ID" },
+        "propertyId": { "type": "string", "description": "Associated properties/ ID" },
+        "agentId": { "type": "string", "description": "Môi giới ID receiving this lead" },
+        "customerId": { "type": "string", "description": "Potential buyer uid from users/" },
+        "fullName": { "type": "string", "description": "Contact full name" },
+        "phone": { "type": "string", "description": "Lead phone number" },
+        "email": { "type": "string", "description": "Lead email address" },
+        "message": { "type": "string", "description": "Custom inquiry text string" },
+        "status": { "type": "string", "enum": ["new", "contacted", "qualified", "lost", "won"], "description": "Lead stage status" },
+        "aiSummary": { "type": "string", "description": "LLM powered lead valuation or brief summarizer" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["leadId", "propertyId", "agentId", "status", "createdAt", "updatedAt"]
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "Booking request for interactive property view sessions",
+      "type": "object",
+      "properties": {
+        "appointmentId": { "type": "string", "description": "Unique booking ID" },
+        "propertyId": { "type": "string", "description": "Properties/ ID selected" },
+        "agentId": { "type": "string", "description": "Agent UID" },
+        "customerId": { "type": "string", "description": "Customer UID" },
+        "scheduledTime": { "type": "string", "format": "date-time", "description": "Target date and time of virtual or real meetup" },
+        "type": { "type": "string", "enum": ["online_video", "in_person"], "description": "Meeting style classification" },
+        "status": { "type": "string", "enum": ["pending", "confirmed", "cancelled", "completed"], "description": "Appointment status flow" },
+        "notes": { "type": "string", "description": "Customer meeting notes" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last update timestamp" }
+      },
+      "required": ["appointmentId", "propertyId", "agentId", "customerId", "scheduledTime", "type", "status", "createdAt", "updatedAt"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "In-app news alert for likes, follows, bookings",
+      "type": "object",
+      "properties": {
+        "notificationId": { "type": "string", "description": "Unique notification alert ID" },
+        "receiverId": { "type": "string", "description": "UID of receiver document" },
+        "senderId": { "type": "string", "description": "UID of author triggering event" },
+        "type": { "type": "string", "enum": ["like", "comment", "follow", "booking_change", "new_message", "lead_alert"], "description": "Categorization of alert trigger" },
+        "title": { "type": "string", "description": "Notification title text" },
+        "body": { "type": "string", "description": "Notification body content" },
+        "referenceId": { "type": "string", "description": "Associated entity reference ID (videoId, propertyId, bookingId, messageId)" },
+        "isRead": { "type": "boolean", "description": "Read status toggle" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["notificationId", "receiverId", "type", "title", "body", "isRead", "createdAt"]
+    },
+    "SavedProperty": {
+      "title": "SavedProperty",
+      "description": "A registry of customized property listings saved by customers",
+      "type": "object",
+      "properties": {
+        "savedId": { "type": "string", "description": "Composite key: 'userId_propertyId'" },
+        "userId": { "type": "string", "description": "UID of buyer" },
+        "propertyId": { "type": "string", "description": "Target ID of property" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["savedId", "userId", "propertyId", "createdAt"]
+    },
+    "ViewHistory": {
+      "title": "ViewHistory",
+      "description": "Logged feed interactions tracks click behaviors of users for AI recommendation systems",
+      "type": "object",
+      "properties": {
+        "historyId": { "type": "string", "description": "Unique logs entry identifier ID" },
+        "userId": { "type": "string", "description": "Target UID user" },
+        "targetId": { "type": "string", "description": "Associated target interaction videoId or propertyId" },
+        "targetType": { "type": "string", "enum": ["video", "property"], "description": "Content group identifier" },
+        "watchDurationSecs": { "type": "number", "description": "For videos, tracked runtime spent watching in seconds" },
+        "completed": { "type": "boolean", "description": "Whether video watched to standard cutoff threshold length ratio" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Creation timestamp" }
+      },
+      "required": ["historyId", "userId", "targetId", "targetType", "createdAt"]
+    }
+  },
+  "firestore": {
+    "users/{userId}": {
+      "schema": "User",
+      "description": "User profiles collection partitioned by their unique Firebase Auth UID"
+    },
+    "properties/{propertyId}": {
+      "schema": "Property",
+      "description": "Global list of real estate properties with geo location mappings"
+    },
+    "videos/{videoId}": {
+      "schema": "Video",
+      "description": "TikTok short videos collection linked to optional properties"
+    },
+    "comments/{commentId}": {
+      "schema": "Comment",
+      "description": "Flat list of video comments referencing back video document keys"
+    },
+    "followers/{followerId}": {
+      "schema": "Follower",
+      "description": "Bidirectional query mapping for following and followers network relations"
+    },
+    "likes/{likeId}": {
+      "schema": "Like",
+      "description": "Stores user click-likes on both real estate property directories and video clips"
+    },
+    "messages/{messageId}": {
+      "schema": "Message",
+      "description": "Flat room messages enabling chat synchronization"
+    },
+    "leads/{leadId}": {
+      "schema": "Lead",
+      "description": "Customer purchase intent files directed towards agents"
+    },
+    "appointments/{appointmentId}": {
+      "schema": "Appointment",
+      "description": "Virtual and physically in-person real estate viewings appointments schedules"
+    },
+    "notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "Push alerts and general status triggers tracking notification models"
+    },
+    "savedProperties/{savedId}": {
+      "schema": "SavedProperty",
+      "description": "Saves customer properties search selections bookmarks"
+    },
+    "viewHistory/{historyId}": {
+      "schema": "ViewHistory",
+      "description": "Provides data streams for generating tailored TikTok feeds for individual user models"
+    }
+  }
+}
