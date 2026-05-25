@@ -331,6 +331,7 @@ export const PropertyDetail: React.FC<PropertyDetailProps> = ({
       const seedInquiryId = `lead_${Date.now()}_${user.uid}`;
       await setDoc(doc(db, 'leads', seedInquiryId), {
         id: seedInquiryId,
+        leadId: seedInquiryId,
         propertyId: property.id,
         propertyName: property.title,
         agentId: property.agentId || 'demo_agent_uid',
@@ -370,6 +371,7 @@ export const PropertyDetail: React.FC<PropertyDetailProps> = ({
       const bId = `booking_${Date.now()}_${user.uid}`;
       await setDoc(doc(db, 'appointments', bId), {
         id: bId,
+        appointmentId: bId,
         propertyId: property.id,
         propertyName: property.title,
         agentId: property.agentId || 'demo_agent_uid',

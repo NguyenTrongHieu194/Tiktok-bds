@@ -291,8 +291,9 @@ service cloud.firestore {
     }
 
     function isValidLead(data) {
-      return data.keys().hasAll(['leadId', 'propertyId', 'agentId', 'status', 'createdAt', 'updatedAt'])
-        && data.leadId is string && data.leadId.size() <= 128
+      return data.keys().hasAll(['propertyId', 'agentId', 'status', 'createdAt', 'updatedAt'])
+        && (data.get('leadId', '') is string && data.get('leadId', '').size() <= 128)
+        && (data.get('id', '') is string && data.get('id', '').size() <= 128)
         && data.propertyId is string && data.propertyId.size() <= 128
         && data.agentId is string && data.agentId.size() <= 128
         && data.status in ['new', 'contacted', 'qualified', 'lost', 'won']
@@ -331,8 +332,9 @@ service cloud.firestore {
     }
 
     function isValidAppointment(data) {
-      return data.keys().hasAll(['appointmentId', 'propertyId', 'agentId', 'customerId', 'scheduledTime', 'type', 'status', 'createdAt', 'updatedAt'])
-        && data.appointmentId is string && data.appointmentId.size() <= 128
+      return data.keys().hasAll(['propertyId', 'agentId', 'customerId', 'scheduledTime', 'type', 'status', 'createdAt', 'updatedAt'])
+        && (data.get('appointmentId', '') is string && data.get('appointmentId', '').size() <= 128)
+        && (data.get('id', '') is string && data.get('id', '').size() <= 128)
         && data.propertyId is string && data.propertyId.size() <= 128
         && data.agentId is string && data.agentId.size() <= 128
         && data.customerId is string && data.customerId.size() <= 128

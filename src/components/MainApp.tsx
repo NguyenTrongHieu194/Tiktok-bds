@@ -17,6 +17,7 @@ import { PropertyDetail } from './PropertyDetail';
 import { AgentProfile } from './AgentProfile';
 import { AIChatSearch } from './AIChatSearch';
 import { AIUploadStudio } from './AIUploadStudio';
+import { SalesDashboard } from './SalesDashboard';
 
 // Interfaces matching firebase-blueprint.json
 interface PropertyDoc {
@@ -579,8 +580,14 @@ export const MainApp: React.FC = () => {
       // Mocked AI analysis generated based on the user's specific inquiry - production architecture ready!
       const simulatedAISummary = `Khách hàng tiềm năng cao. Quan tâm sâu đến sản phẩm "${selectedPropertyForLead.title}". Nhóm thu nhập cao. Khuyến nghị tư vấn gói hỗ trợ tài chính trả góp dự toán 70% giá trị bđs (${(selectedPropertyForLead.price * 0.7 / 1000000000).toFixed(1)} tỷ VND).`;
 
-      await addDoc(collection(db, 'leads'), {
+      const leadDocRef = doc(collection(db, 'leads'));
+      const generatedLeadId = leadDocRef.id;
+
+      await setDoc(leadDocRef, {
+        id: generatedLeadId,
+        leadId: generatedLeadId,
         propertyId: selectedPropertyForLead.id,
+        propertyName: selectedPropertyForLead.title,
         agentId: selectedPropertyForLead.agentId,
         customerId: user.uid,
         fullName: leadName,
@@ -627,7 +634,12 @@ export const MainApp: React.FC = () => {
     const path = 'appointments';
 
     try {
-      await addDoc(collection(db, 'appointments'), {
+      const aptDocRef = doc(collection(db, 'appointments'));
+      const generatedAptId = aptDocRef.id;
+
+      await setDoc(aptDocRef, {
+        id: generatedAptId,
+        appointmentId: generatedAptId,
         propertyId: selectedPropertyForBooking.id,
         propertyName: selectedPropertyForBooking.title,
         agentId: selectedPropertyForBooking.agentId,
@@ -1318,165 +1330,15 @@ export const MainApp: React.FC = () => {
 
         {/* Tab Module 5: Sales CRM Dashboard (Requires customer / agent role sync display) */}
         {activeTab === 'dashboard' && (
-          <div id="crm-dashboard" className="flex-1 space-y-6">
-            <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-              <div>
-                <h2 className="text-lg font-black text-white">Quản Trị Cơ Hội & Giao Dịch</h2>
-                <p className="text-xs text-zinc-400">Xem các lịch đặt hẹn xem nhà (Appointments) và dữ liệu khách hàng tiềm năng (Leads BĐS) của bạn.</p>
-              </div>
-              <div className="flex gap-2 text-xs font-bold">
-                <span className="bg-rose-500/15 text-rose-400 px-3 py-1 bg-opacity-10 border border-rose-500/20 rounded-full">
-                  Tổng Leads hồ sơ: {leads.length}
-                </span>
-                <span className="bg-indigo-500/15 text-indigo-400 px-3 py-1 bg-opacity-10 border border-indigo-500/20 rounded-full">
-                  Lịch đặt hẹn: {appointments.length}
-                </span>
-              </div>
-            </div>
-
-            {/* List columns */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-              
-              {/* Opportunities Leads column */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="text-sm font-extrabold text-white flex items-center gap-1.5">
-                  <TrendingUp className="text-rose-500" size={15} />
-                  Bảng Quản Lý Cơ Hội Khách Hàng (Leads)
-                </h3>
-                
-                <div className="space-y-4.5 max-h-[460px] overflow-y-auto pr-2 custom-scroll">
-                  {leads.length === 0 ? (
-                    <div className="text-center py-12 text-zinc-500 text-xs text-center">
-                       Chưa thu được cơ hội Leads nào dành riêng cho bạn.
-                    </div>
-                  ) : (
-                    leads.map(l => (
-                      <div key={l.id} className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl space-y-3 relative">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-xs font-bold text-white mb-0.5">{l.fullName}</p>
-                            <p className="text-[10px] text-zinc-400 flex items-center gap-1">
-                              <Phone size={10} /> {l.phone} | <Mail size={10} /> {l.email}
-                            </p>
-                          </div>
-                          <span className={`text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                            l.status === 'new' ? 'bg-rose-500/20 text-rose-400' :
-                            l.status === 'contacted' ? 'bg-yellow-500/20 text-yellow-400' :
-                            l.status === 'qualified' ? 'bg-blue-500/20 text-blue-400' :
-                            l.status === 'won' ? 'bg-green-500/20 text-green-400' :
-                            'bg-zinc-500/20 text-zinc-400'
-                          }`}>
-                            {l.status}
-                          </span>
-                        </div>
-
-                        <p className="text-xs text-zinc-300 leading-relaxed bg-zinc-900/60 p-2 rounded-lg border border-zinc-800/40">Gặp khó: "{l.message}"</p>
-
-                        {/* AI Summary generated */}
-                        {l.aiSummary && (
-                          <div className="bg-rose-950/15 border border-rose-900/30 p-2.5 rounded-lg text-[10px] text-rose-300">
-                            <p className="font-mono text-[8px] font-black uppercase text-rose-400 mb-1 flex items-center gap-1">
-                              <Brain size={10} /> AI Deep Insights
-                            </p>
-                            <p className="italic">{l.aiSummary}</p>
-                          </div>
-                        )}
-
-                        {/* Agent status controls layout */}
-                        {profile?.role === 'agent' && (
-                          <div className="flex gap-1.5 pt-2 border-t border-zinc-850 text-[10px] font-semibold text-zinc-300 justify-end">
-                            <span className="text-[9px] text-zinc-500 mr-auto flex items-center">Chuyển trạng thái:</span>
-                            <button 
-                              onClick={() => handleChangeLeadStatus(l.id, 'contacted')}
-                              className="px-2 py-1 bg-zinc-800 border border-zinc-705 hover:text-white rounded"
-                            >
-                              Liên hệ
-                            </button>
-                            <button 
-                              onClick={() => handleChangeLeadStatus(l.id, 'qualified')}
-                              className="px-2 py-1 bg-zinc-800 border border-zinc-705 hover:text-white rounded"
-                            >
-                              Đạt chuẩn
-                            </button>
-                            <button 
-                              onClick={() => handleChangeLeadStatus(l.id, 'won')}
-                              className="px-2 py-1 bg-green-950/40 border border-green-800 text-green-400 hover:text-white rounded"
-                            >
-                              Chốt
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              {/* Appointments calendar booking records */}
-              <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-5 space-y-4">
-                <h3 className="text-sm font-extrabold text-white flex items-center gap-1.5">
-                  <Calendar className="text-indigo-400" size={15} />
-                  Lịch Sắp Xếp Trực Tiếp / Online (Appointments)
-                </h3>
-
-                <div className="space-y-4.5 max-h-[460px] overflow-y-auto pr-2 custom-scroll">
-                  {appointments.length === 0 ? (
-                    <div className="text-center py-12 text-zinc-500 text-xs text-center">
-                       Chưa đăng ký cuộc hẹn xem nhà nào được ghi nhận.
-                    </div>
-                  ) : (
-                    appointments.map(a => (
-                      <div key={a.id} className="bg-zinc-950 p-4 border border-zinc-850 rounded-xl space-y-3">
-                        <div className="flex justify-between items-start">
-                          <div>
-                            <p className="text-xs font-bold text-white mb-0.5 max-w-[200px] truncate">{a.propertyName || 'Tài sản Bất động sản'}</p>
-                            <p className="text-[10px] font-mono text-indigo-400 flex items-center gap-1">
-                              <Clock size={10} /> Đã đặt: {a.scheduledTime}
-                            </p>
-                          </div>
-                          <span className={`text-[8px] font-mono font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${
-                            a.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400 border border-yellow-500/20' :
-                            a.status === 'confirmed' ? 'bg-green-500/20 text-green-400 border border-green-500/20' :
-                            'bg-red-500/20 text-red-400 border border-red-500/20'
-                          }`}>
-                            {a.status}
-                          </span>
-                        </div>
-
-                        <p className="text-[10px] text-zinc-400 leading-relaxed">
-                          Yêu cầu cuộc hẹn: <span className="font-semibold">{a.type === 'online_video' ? 'Video call giải đáp 1-1' : 'Xem hiện trạng mặt bằng thực địa'}</span>
-                        </p>
-
-                        {a.notes && (
-                          <p className="text-xs text-zinc-300 italic bg-zinc-900/60 p-2 rounded-lg border border-zinc-800/40">Ghi chú: "{a.notes}"</p>
-                        )}
-
-                        {/* Actions for Agent */}
-                        {profile?.role === 'agent' && (
-                          <div className="flex gap-1.5 pt-2 border-t border-zinc-850 text-[10px] font-semibold text-zinc-300 justify-end">
-                            <span className="text-[9px] text-zinc-500 mr-auto flex items-center">Phê duyệt:</span>
-                            <button 
-                              onClick={() => handleChangeAptStatus(a.id, 'confirmed')}
-                              className="px-2.5 py-1 bg-green-950/40 border border-green-800 text-green-400 hover:text-white rounded"
-                            >
-                              Xác nhận duyệt
-                            </button>
-                            <button 
-                              onClick={() => handleChangeAptStatus(a.id, 'cancelled')}
-                              className="px-2.5 py-1 bg-red-950/40 border border-red-800 text-red-400 hover:text-white rounded"
-                            >
-                              Huỷ lịch
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-            </div>
-          </div>
+          <SalesDashboard 
+            userId={user?.uid || 'demo_agent_uid'}
+            userRole={profile?.role || 'customer'}
+            leads={leads}
+            appointments={appointments}
+            videos={videos}
+            onChangeLeadStatus={handleChangeLeadStatus}
+            onChangeAptStatus={handleChangeAptStatus}
+          />
         )}
 
         {/* Tab Module 6: AI Upload Studio */}

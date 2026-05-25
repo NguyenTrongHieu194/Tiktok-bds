@@ -214,7 +214,71 @@ Hãy trả về định dạng JSON chuẩn xác.`;
   }
 });
 
-// 3. Vite integration and Static Files serving
+// 3. AI Voice Generator Endpoint using Gemini TTS
+app.post('/api/ai-video-voice', async (req, res) => {
+  try {
+    const { text, voiceId } = req.body;
+    if (!text) {
+      res.status(400).json({ error: 'Nội dung văn bản lồng tiếng là bắt buộc.' });
+      return;
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (!apiKey) {
+      res.json({ simulated: true, message: 'Đại sứ AI chưa được cấu hình GEMINI_API_KEY để lồng tiếng lột tả.' });
+      return;
+    }
+
+    const ai = new GoogleGenAI({
+      apiKey,
+      httpOptions: {
+        headers: {
+          'User-Agent': 'aistudio-build',
+        }
+      }
+    });
+
+    // Map the southern/northern custom agent voices to Gemini prebuilt voices: 'Puck', 'Charon', 'Kore', 'Fenrir', 'Zephyr'
+    let selectedPrebuiltVoice = 'Zephyr';
+    if (voiceId === 'female-southern') {
+      selectedPrebuiltVoice = 'Kore';
+    } else if (voiceId === 'male-southern') {
+      selectedPrebuiltVoice = 'Charon';
+    } else if (voiceId === 'female-northern') {
+      selectedPrebuiltVoice = 'Zephyr';
+    } else if (voiceId === 'male-northern') {
+      selectedPrebuiltVoice = 'Fenrir';
+    }
+
+    // Strip timelines such as [0:01], [0:23] etc before passing into voice synthesizer
+    const cleanText = text.replace(/\[\d+:\d+\]/g, '').trim();
+
+    const response = await ai.models.generateContent({
+      model: 'gemini-3.1-flash-tts-preview',
+      contents: [{ parts: [{ text: `Hãy đọc đoạn sau thật truyền cảm và rõ ràng: ${cleanText}` }] }],
+      config: {
+        responseModalities: ['AUDIO'],
+        speechConfig: {
+          voiceConfig: {
+            prebuiltVoiceConfig: { voiceName: selectedPrebuiltVoice }
+          }
+        }
+      }
+    });
+
+    const base64Audio = response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
+    if (base64Audio) {
+      res.json({ audio: base64Audio });
+    } else {
+      res.json({ simulated: true, message: 'Vấn đề tạo âm thanh trống từ mô hình Gemini TTS.' });
+    }
+  } catch (err: any) {
+    console.error('Gemini TTS Service error:', err);
+    res.json({ simulated: true, message: err?.message || String(err) });
+  }
+});
+
+// 4. Vite integration and Static Files serving
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
