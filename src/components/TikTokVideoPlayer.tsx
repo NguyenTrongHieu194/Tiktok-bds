@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TikTokComments } from './TikTokComments';
+import { recommendationService } from '../services/recommendationService';
 
 interface TikTokVideoPlayerProps {
   video: VideoDoc;
@@ -65,6 +66,57 @@ export const TikTokVideoPlayer: React.FC<TikTokVideoPlayerProps> = ({
     fetchProperty();
     return () => { active = false; };
   }, [video.propertyId]);
+
+  // Real-time Watch Time Tracking for Recommendation Feedback Engine
+  const activeStartTimeRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (isActive) {
+      activeStartTimeRef.current = Date.now();
+    } else {
+      if (activeStartTimeRef.current && user) {
+        const watchDurationMs = Date.now() - activeStartTimeRef.current;
+        const watchDurationSec = Math.round(watchDurationMs / 1000);
+        
+        if (watchDurationSec >= 3) { // Only log positive watch times greater than 2 seconds (skip quick swipes)
+          recommendationService.logVideoInteraction({
+            userId: user.uid,
+            videoId: video.id,
+            videoTags: video.aiTags || [],
+            propertyPrice: property?.price,
+            propertyCity: property?.location?.city,
+            propertyDistrict: property?.location?.district,
+            watchTimeSec: watchDurationSec,
+            totalDuration: 15,
+            liked: isLiked,
+            saved: isSaved
+          }).catch(err => console.warn("Logged feedback failed:", err));
+        }
+      }
+      activeStartTimeRef.current = null;
+    }
+
+    return () => {
+      if (activeStartTimeRef.current && user && isActive) {
+        const watchDurationMs = Date.now() - activeStartTimeRef.current;
+        const watchDurationSec = Math.round(watchDurationMs / 1000);
+        if (watchDurationSec >= 3) {
+          recommendationService.logVideoInteraction({
+            userId: user.uid,
+            videoId: video.id,
+            videoTags: video.aiTags || [],
+            propertyPrice: property?.price,
+            propertyCity: property?.location?.city,
+            propertyDistrict: property?.location?.district,
+            watchTimeSec: watchDurationSec,
+            totalDuration: 15,
+            liked: isLiked,
+            saved: isSaved
+          }).catch(err => console.warn("Logged feedback failed:", err));
+        }
+      }
+    };
+  }, [isActive, user, video.id, video.aiTags, property, isLiked, isSaved]);
 
   // Handle Autoplay & Pause via isActive state controlled by parent page
   useEffect(() => {

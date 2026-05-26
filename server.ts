@@ -278,6 +278,135 @@ app.post('/api/ai-video-voice', async (req, res) => {
   }
 });
 
+// 3.5. Real Estate Recommendation Indexing & Scoring API Flow
+app.post('/api/recommendations', (req, res) => {
+  try {
+    const { 
+      userId = 'anonymous', 
+      userPreferences = {}, 
+      videos = [], 
+      properties = [], 
+      config = {} 
+    } = req.body;
+
+    const locWeight = config.locationWeight ?? 35;
+    const priWeight = config.priceWeight ?? 30;
+    const tagWeight = config.tagWeight ?? 25;
+    const intWeight = config.interactionWeight ?? 10;
+    const recWeight = config.recencyWeight ?? 5;
+
+    const prefCity = userPreferences.preferredCity || 'Hồ Chí Minh';
+    const prefDistrict = userPreferences.preferredDistrict || '';
+    const prefMin = Number(userPreferences.preferredMinPrice ?? 0);
+    const prefMax = Number(userPreferences.preferredMaxPrice ?? 50000);
+    const tagWeights = userPreferences.tagWeights || {};
+
+    const scoredFeed = videos.map((video: any) => {
+      const property = properties.find((p: any) => p.id === video.propertyId) || null;
+
+      // 1. Location Matching
+      let locationScore = 40;
+      if (property) {
+        const cityMatch = property.location?.city?.toLowerCase() === prefCity.toLowerCase();
+        const distMatch = property.location?.district?.toLowerCase() === prefDistrict.toLowerCase();
+        if (cityMatch && distMatch) {
+          locationScore = 100;
+        } else if (cityMatch) {
+          locationScore = 80;
+        } else if (prefCity) {
+          locationScore = 20;
+        }
+      }
+
+      // 2. Price Affinity Matching (Gaussian Bell Curve style)
+      let priceScore = 50;
+      if (property && property.price) {
+        const price = property.price;
+        if (price >= prefMin && price <= prefMax) {
+          priceScore = 100;
+        } else {
+          const prefMid = (prefMin + prefMax) / 2;
+          const range = prefMax - prefMin || 10000;
+          const sigma = range / 2;
+          const distance = price < prefMin ? prefMin - price : price - prefMax;
+          priceScore = Math.max(10, Math.round(100 * Math.exp(-0.4 * (distance / (sigma || 1000)))));
+        }
+      }
+
+      // 3. Tag Matching
+      let tagScore = 30;
+      const vTags = video.aiTags || [];
+      if (vTags.length > 0) {
+        let matchedCount = 0;
+        let matchedWeightSum = 0;
+        vTags.forEach((t: string) => {
+          if (tagWeights[t]) {
+            matchedCount++;
+            matchedWeightSum += Number(tagWeights[t]);
+          }
+        });
+        if (matchedCount > 0) {
+          const meanWeight = matchedWeightSum / matchedCount;
+          tagScore = Math.min(100, Math.round(50 + (meanWeight * 20)));
+        }
+      }
+
+      // 4. Interaction baseline score
+      let interactionScore = 50;
+      if (video.likesCount > 500) interactionScore += 10;
+      if (video.viewCount > 10000) interactionScore += 10;
+      interactionScore = Math.min(100, interactionScore);
+
+      // 5. Recency calculation
+      let recencyScore = 100;
+      if (video.createdAt) {
+        const vidDate = new Date(video.createdAt);
+        const daysElapsed = Math.max(0, (Date.now() - vidDate.getTime()) / (1000 * 3600 * 24));
+        recencyScore = Math.round(100 * Math.exp(-0.05 * daysElapsed));
+      }
+
+      // Weights combinatorics
+      const finalScore = Number((
+        (locationScore * locWeight) / 100 +
+        (priceScore * priWeight) / 100 +
+        (tagScore * tagWeight) / 100 +
+        (interactionScore * intWeight) / 100 +
+        (recencyScore * recWeight) / 100
+      ).toFixed(1));
+
+      return {
+        video,
+        property,
+        finalScore,
+        breakdown: {
+          locationScore,
+          priceScore,
+          tagScore,
+          interactionScore,
+          recencyScore
+        }
+      };
+    });
+
+    scoredFeed.sort((a: any, b: any) => b.finalScore - a.finalScore);
+    res.json({
+      success: true,
+      userId,
+      aggregatedPreferences: {
+        prefCity,
+        prefDistrict,
+        prefMin,
+        prefMax,
+        tagWeights
+      },
+      scoredFeed
+    });
+  } catch (error: any) {
+    console.error('Recommendations Scoring Engine API error:', error);
+    res.status(500).json({ error: error?.message || 'Calculation failed' });
+  }
+});
+
 // 4. Vite integration and Static Files serving
 async function startServer() {
   if (process.env.NODE_ENV !== 'production') {

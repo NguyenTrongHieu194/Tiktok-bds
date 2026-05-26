@@ -9,7 +9,7 @@ import {
   Video, Home, Sparkles, Users, Calendar, PlusCircle, LogOut, 
   ThumbsUp, MessageCircle, Share2, Send, Bookmark, MapPin, 
   Check, Phone, Mail, Award, Clock, Star, Brain, ChevronRight, 
-  TrendingUp, Compass, Plus, MessageSquare, AlertCircle
+  TrendingUp, Compass, Plus, MessageSquare, AlertCircle, Dna
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { TikTokFeed } from './TikTokFeed';
@@ -18,6 +18,7 @@ import { AgentProfile } from './AgentProfile';
 import { AIChatSearch } from './AIChatSearch';
 import { AIUploadStudio } from './AIUploadStudio';
 import { SalesDashboard } from './SalesDashboard';
+import { RecommendationEnginePanel } from './RecommendationEnginePanel';
 
 // Interfaces matching firebase-blueprint.json
 interface PropertyDoc {
@@ -98,7 +99,7 @@ export const MainApp: React.FC = () => {
   const { user, profile, signOutUser } = useAuth();
   
   // Navigation
-  const [activeTab, setActiveTab] = useState<'tiktok' | 'properties' | 'ai_search' | 'agents' | 'dashboard' | 'upload'>('tiktok');
+  const [activeTab, setActiveTab] = useState<'tiktok' | 'properties' | 'ai_search' | 'agents' | 'dashboard' | 'upload' | 'recommendations'>('tiktok');
 
   // Firestore DB states
   const [properties, setProperties] = useState<PropertyDoc[]>([]);
@@ -849,6 +850,12 @@ export const MainApp: React.FC = () => {
             <Home size={13} /> Sàn Bất Động Sản
           </button>
           <button 
+            onClick={() => setActiveTab('recommendations')}
+            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'recommendations' ? 'bg-zinc-800 text-rose-400' : 'text-zinc-400 hover:text-white'}`}
+          >
+            <Dna size={13} className="text-rose-500 animate-pulse" /> DNA Thuật Toán Gu BĐS
+          </button>
+          <button 
             onClick={() => setActiveTab('ai_search')}
             className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${activeTab === 'ai_search' ? 'bg-zinc-800 text-rose-400' : 'text-zinc-400 hover:text-white'}`}
           >
@@ -1349,6 +1356,17 @@ export const MainApp: React.FC = () => {
               onSuccess={(videoDoc) => {
                 setActiveTab('tiktok');
               }} 
+            />
+          </div>
+        )}
+
+        {/* Tab Module 7: Recommendation Engine & Personalization DNA Terminal */}
+        {activeTab === 'recommendations' && (
+          <div className="flex-grow p-4 lg:p-8 max-w-7xl mx-auto w-full pb-20">
+            <RecommendationEnginePanel
+              userId={user?.uid || 'anonymous'}
+              videos={videos}
+              properties={properties}
             />
           </div>
         )}
